@@ -1,0 +1,1556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>3D Voxel Blitz Tank Battle</title>
+    <!-- Load Three.js for 3D WebGL Rendering -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Load Tone.js for procedural synthesized sound effects -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <!-- Load Google Font for sharp arcade/voxel aesthetic -->
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            margin: 0;
+            padding: 0;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #12151a;
+            font-family: 'Chakra Petch', sans-serif;
+            color: #ffffff;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+        }
+
+        /* Top HUD Overlay */
+        #hud-top {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            right: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            pointer-events: none;
+            z-index: 10;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .hud-panel {
+            background: rgba(15, 20, 28, 0.85);
+            border: 2px solid #d4af37;
+            border-radius: 12px;
+            padding: 12px 18px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6), inset 0 0 12px rgba(0, 210, 255, 0.2);
+            backdrop-filter: blur(4px);
+        }
+
+        .hud-title {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: #00d2ff;
+            margin-bottom: 4px;
+        }
+
+        .hud-value {
+            font-family: 'Press Start 2P', monospace;
+            font-size: 1.1rem;
+            color: #ffd700;
+            text-shadow: 2px 2px 0px #000;
+        }
+
+        /* Health & Reload Bars */
+        .bar-container {
+            width: 180px;
+            height: 14px;
+            background: #222834;
+            border: 2px solid #444c5e;
+            border-radius: 7px;
+            overflow: hidden;
+            margin-top: 6px;
+        }
+
+        #hp-bar {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, #00d2ff, #38ef7d);
+            transition: width 0.2s ease-out;
+        }
+
+        #reload-bar {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, #f7971e, #ffd200);
+            transition: width 0.05s linear;
+        }
+
+        /* Bottom Action Controls (Outside main play space, padded & tactile) */
+        #controls-bar {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 12px;
+            z-index: 15;
+            padding: 8px 16px;
+            background: rgba(15, 20, 28, 0.75);
+            border: 1px solid rgba(212, 175, 55, 0.5);
+            border-radius: 16px;
+            backdrop-filter: blur(4px);
+        }
+
+        .game-btn {
+            background: linear-gradient(180deg, #2b3545 0%, #181e28 100%);
+            border: 2px solid #d4af37;
+            color: #ffd700;
+            font-family: 'Chakra Petch', sans-serif;
+            font-weight: 700;
+            font-size: 0.9rem;
+            padding: 10px 16px;
+            border-radius: 10px;
+            cursor: pointer;
+            box-shadow: 0 4px 0 #8a6d14, 0 6px 12px rgba(0, 0, 0, 0.5);
+            transition: all 0.1s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .game-btn:hover {
+            border-color: #00d2ff;
+            color: #ffffff;
+            box-shadow: 0 4px 0 #0082a3, 0 0 15px rgba(0, 210, 255, 0.4);
+            transform: translateY(-1px);
+        }
+
+        .game-btn:active {
+            transform: translateY(3px);
+            box-shadow: 0 1px 0 #8a6d14;
+        }
+
+        .game-btn.primary {
+            background: linear-gradient(180deg, #f5af19 0%, #c77d0a 100%);
+            border-color: #fff3b0;
+            color: #111;
+            font-size: 1.1rem;
+            padding: 14px 28px;
+        }
+
+        /* Modals / Start & Game Over Screens */
+        .overlay-screen {
+            position: absolute;
+            inset: 0;
+            background: rgba(10, 14, 20, 0.82);
+            backdrop-filter: blur(6px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 30;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .modal-card {
+            background: linear-gradient(145deg, #1b222e, #11161f);
+            border: 3px solid #d4af37;
+            border-radius: 20px;
+            padding: 32px;
+            max-width: 520px;
+            width: 100%;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 30px rgba(0, 210, 255, 0.25);
+        }
+
+        .modal-card h1 {
+            font-family: 'Press Start 2P', monospace;
+            font-size: 1.5rem;
+            line-height: 1.4;
+            color: #ffd700;
+            margin-bottom: 12px;
+            text-shadow: 3px 3px 0 #000;
+        }
+
+        .modal-card p {
+            color: #cbd5e1;
+            font-size: 1rem;
+            line-height: 1.5;
+            margin-bottom: 20px;
+        }
+
+        .controls-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            text-align: left;
+            background: rgba(0, 0, 0, 0.35);
+            padding: 14px;
+            border-radius: 12px;
+            border: 1px solid #334155;
+            margin-bottom: 24px;
+            font-size: 0.88rem;
+        }
+
+        .key-badge {
+            display: inline-block;
+            background: #2d3748;
+            border: 1px solid #00d2ff;
+            color: #00d2ff;
+            padding: 2px 7px;
+            border-radius: 5px;
+            font-weight: bold;
+            margin-right: 4px;
+        }
+
+        /* Mobile Touch Controls */
+        #mobile-controls {
+            display: none;
+            position: absolute;
+            bottom: 85px;
+            left: 20px;
+            right: 20px;
+            justify-content: space-between;
+            pointer-events: none;
+            z-index: 20;
+        }
+
+        .touch-pad {
+            pointer-events: auto;
+            display: grid;
+            grid-template-columns: repeat(3, 54px);
+            grid-template-rows: repeat(2, 54px);
+            gap: 6px;
+        }
+
+        .touch-btn {
+            background: rgba(20, 28, 38, 0.75);
+            border: 2px solid #d4af37;
+            border-radius: 12px;
+            color: #ffd700;
+            font-size: 1.2rem;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            touch-action: manipulation;
+        }
+
+        .touch-btn:active {
+            background: rgba(0, 210, 255, 0.4);
+            border-color: #00d2ff;
+        }
+
+        #touch-fire {
+            pointer-events: auto;
+            width: 84px;
+            height: 84px;
+            border-radius: 50%;
+            background: radial-gradient(circle, #ff512f, #dd2476);
+            border: 3px solid #ffd700;
+            color: white;
+            font-weight: bold;
+            font-size: 1rem;
+            box-shadow: 0 0 20px rgba(255, 81, 47, 0.6);
+            align-self: flex-end;
+            touch-action: manipulation;
+        }
+
+        /* Floating Message Banner */
+        #toast-banner {
+            position: absolute;
+            top: 105px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 210, 255, 0.2);
+            border: 1px solid #00d2ff;
+            color: #fff;
+            padding: 6px 18px;
+            border-radius: 20px;
+            font-weight: bold;
+            letter-spacing: 1px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            z-index: 12;
+        }
+
+        @media (max-width: 768px) {
+            #mobile-controls {
+                display: flex;
+            }
+            .hud-panel {
+                padding: 8px 12px;
+            }
+            .hud-value {
+                font-size: 0.85rem;
+            }
+            .bar-container {
+                width: 120px;
+            }
+            .game-btn {
+                padding: 8px 12px;
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <!-- 3D WebGL Canvas -->
+        <canvas id="game-canvas"></canvas>
+
+        <!-- Heads-Up Display -->
+        <div id="hud-top">
+            <div class="hud-panel">
+                <div class="hud-title">Armor Integrity</div>
+                <div class="bar-container">
+                    <div id="hp-bar"></div>
+                </div>
+                <div class="hud-title" style="margin-top: 8px;">Plasma Cannon</div>
+                <div class="bar-container" style="height: 8px;">
+                    <div id="reload-bar"></div>
+                </div>
+            </div>
+
+            <div class="hud-panel" style="text-align: center;">
+                <div class="hud-title">Wave</div>
+                <div class="hud-value" id="wave-display">1</div>
+                <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 4px;">
+                    Enemies: <span id="enemies-left" style="color: #00d2ff; font-weight: bold;">0</span>
+                </div>
+            </div>
+
+            <div class="hud-panel" style="text-align: right;">
+                <div class="hud-title">Score</div>
+                <div class="hud-value" id="score-display">0000</div>
+            </div>
+        </div>
+
+        <div id="toast-banner">WAVE CLEARED!</div>
+
+        <!-- Mobile Touch Controls -->
+        <div id="mobile-controls">
+            <div class="touch-pad">
+                <div></div>
+                <button class="touch-btn" id="btn-up">▲</button>
+                <div></div>
+                <button class="touch-btn" id="btn-left">◀</button>
+                <button class="touch-btn" id="btn-down">▼</button>
+                <button class="touch-btn" id="btn-right">▶</button>
+            </div>
+            <button id="touch-fire">FIRE</button>
+        </div>
+
+        <!-- Bottom Action Bar -->
+        <div id="controls-bar">
+            <button class="game-btn" id="btn-camera" title="Switch Camera Angle">
+                🎥 Camera: Follow
+            </button>
+            <button class="game-btn" id="btn-sound" title="Toggle Sound Effects">
+                🔊 Sound: ON
+            </button>
+            <button class="game-btn" id="btn-restart" title="Restart Match">
+                ↻ Restart
+            </button>
+        </div>
+
+        <!-- Start Menu Overlay -->
+        <div id="start-screen" class="overlay-screen">
+            <div class="modal-card">
+                <h1>VOXEL BLITZ</h1>
+                <p>Command the custom <strong>Aegis-X Quad-Track Voxel Tank</strong>. Blast rival armored units and shatter the voxel forest arena!</p>
+                
+                <div class="controls-grid">
+                    <div><span class="key-badge">W</span><span class="key-badge">S</span> Drive / Reverse</div>
+                    <div><span class="key-badge">A</span><span class="key-badge">D</span> Steer Hull</div>
+                    <div><span class="key-badge">Mouse</span> Aim Turret</div>
+                    <div><span class="key-badge">Click</span> / <span class="key-badge">Space</span> Fire</div>
+                    <div style="grid-column: span 2; color: #94a3b8; font-size: 0.8rem; margin-top: 4px;">
+                        💡 Tip: Hold Right-Click & drag to orbit camera, or use the Camera button below!
+                    </div>
+                </div>
+
+                <button class="game-btn primary" id="start-btn" style="margin: 0 auto;">
+                    ⚡ DEPLOY TANK
+                </button>
+            </div>
+        </div>
+
+        <!-- Game Over Overlay -->
+        <div id="gameover-screen" class="overlay-screen" style="display: none;">
+            <div class="modal-card">
+                <h1 id="gameover-title" style="color: #ff4d4d;">HULL BREACHED</h1>
+                <p id="gameover-msg">Your voxel tank was overwhelmed in the forest sector.</p>
+                <div style="margin-bottom: 24px;">
+                    <div class="hud-title">Final Combat Score</div>
+                    <div class="hud-value" id="final-score" style="font-size: 1.6rem; margin-top: 6px;">0000</div>
+                </div>
+                <button class="game-btn primary" id="retry-btn" style="margin: 0 auto;">
+                    ↻ REDEPLOY
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * 3D VOXEL BLITZ TANK BATTLE
+         * Single-file Three.js + Tone.js arcade tank game inspired by the gold/blue/black
+         * quad-track voxel tank aesthetic.
+         */
+
+        // --- GLOBAL STATE & CONFIGURATION ---
+        const CONFIG = {
+            arenaSize: 90,
+            playerSpeed: 16,
+            playerTurnSpeed: 2.3,
+            reloadTime: 0.75,
+            shellSpeed: 58,
+            enemySpeed: 8.5
+        };
+
+        let scene, camera, renderer, raycaster;
+        let groundPlane;
+        let clock = new THREE.Clock();
+
+        // Game state variables
+        let gameState = 'MENU'; // MENU, PLAYING, GAMEOVER
+        let score = 0;
+        let wave = 1;
+        let cameraMode = 0; // 0: Dynamic Follow, 1: Tactical Overhead, 2: Close Action
+        let soundEnabled = true;
+        let audioInitialized = false;
+
+        // Entities
+        let playerTank = null;
+        let enemies = [];
+        let projectiles = [];
+        let particles = [];
+        let obstacles = []; // Destructible voxel trees & rocks
+        let pickups = [];   // Repair & overdrive crates
+
+        // Input tracking
+        const keys = { w: false, a: false, s: false, d: false, space: false };
+        const mouse = new THREE.Vector2();
+        let aimPoint = new THREE.Vector3(0, 0, -20);
+        let isRightDragging = false;
+        let prevMouseX = 0;
+        let cameraOrbitYaw = 0;
+        let screenShake = 0;
+
+        // --- SOUND SYNTHESIZER (TONE.JS) ---
+        let fireSynth, explosionSynth, hitSynth, pickupSynth;
+
+        function initAudio() {
+            if (audioInitialized) return;
+            try {
+                Tone.start();
+                fireSynth = new Tone.MembraneSynth({
+                    pitchDecay: 0.04,
+                    octaves: 5,
+                    oscillator: { type: 'sawtooth' },
+                    envelope: { attack: 0.001, decay: 0.25, sustain: 0, release: 0.1 }
+                }).toDestination();
+                fireSynth.volume.value = -8;
+
+                explosionSynth = new Tone.NoiseSynth({
+                    noise: { type: 'brown' },
+                    envelope: { attack: 0.005, decay: 0.45, sustain: 0, release: 0.2 }
+                }).toDestination();
+                explosionSynth.volume.value = -6;
+
+                hitSynth = new Tone.MetalSynth({
+                    frequency: 180,
+                    envelope: { attack: 0.001, decay: 0.12, release: 0.05 },
+                    harmonicity: 3.1,
+                    modulationIndex: 16,
+                    resonance: 2000,
+                    octaves: 1.5
+                }).toDestination();
+                hitSynth.volume.value = -12;
+
+                pickupSynth = new Tone.Synth({
+                    oscillator: { type: 'square' },
+                    envelope: { attack: 0.01, decay: 0.15, sustain: 0.1, release: 0.2 }
+                }).toDestination();
+                pickupSynth.volume.value = -10;
+
+                audioInitialized = true;
+            } catch (e) {
+                console.warn("Audio init deferred:", e);
+            }
+        }
+
+        function playSound(type) {
+            if (!soundEnabled || !audioInitialized) return;
+            try {
+                if (type === 'fire') fireSynth.triggerAttackRelease('C2', '8n');
+                if (type === 'explosion') explosionSynth.triggerAttackRelease('4n');
+                if (type === 'hit') hitSynth.triggerAttackRelease('16n');
+                if (type === 'pickup') {
+                    pickupSynth.triggerAttackRelease('E5', '16n');
+                    setTimeout(() => pickupSynth.triggerAttackRelease('A5', '8n'), 80);
+                }
+            } catch (e) {}
+        }
+
+        // --- PROCEDURAL VOXEL TEXTURES & MATERIALS ---
+        // Creates the iconic Gold, Obsidian Black, and Glowing Electric Blue camo pattern
+        function createDazzleVoxelTexture(primaryHex, secondaryHex, glowHex) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 64;
+            canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+
+            // Base obsidian dark metal
+            ctx.fillStyle = secondaryHex;
+            ctx.fillRect(0, 0, 64, 64);
+
+            // Diagonal gold armor stripes (pixelated step look)
+            ctx.fillStyle = primaryHex;
+            for (let y = 0; y < 64; y += 4) {
+                for (let x = 0; x < 64; x += 4) {
+                    const diag = (x + y) % 32;
+                    if (diag < 12) {
+                        ctx.fillRect(x, y, 4, 4);
+                    } else if (diag >= 16 && diag < 20) {
+                        // Electric blue energy vein
+                        ctx.fillStyle = glowHex;
+                        ctx.fillRect(x, y, 4, 4);
+                        ctx.fillStyle = primaryHex;
+                    }
+                }
+            }
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.magFilter = THREE.NearestFilter;
+            tex.minFilter = THREE.NearestFilter;
+            return tex;
+        }
+
+        const playerCamoTex = createDazzleVoxelTexture('#eab308', '#181c24', '#00e5ff');
+        const enemyCamoTex = createDazzleVoxelTexture('#ef4444', '#1e1b18', '#ff9100');
+
+        const MATERIALS = {
+            playerArmor: new THREE.MeshStandardMaterial({
+                map: playerCamoTex,
+                roughness: 0.35,
+                metalness: 0.45
+            }),
+            playerGold: new THREE.MeshStandardMaterial({
+                color: 0xfacc15,
+                roughness: 0.3,
+                metalness: 0.6
+            }),
+            playerGlow: new THREE.MeshStandardMaterial({
+                color: 0x00e5ff,
+                emissive: 0x00b8d4,
+                emissiveIntensity: 0.85,
+                roughness: 0.2
+            }),
+            enemyArmor: new THREE.MeshStandardMaterial({
+                map: enemyCamoTex,
+                roughness: 0.45,
+                metalness: 0.3
+            }),
+            enemyGlow: new THREE.MeshStandardMaterial({
+                color: 0xff5252,
+                emissive: 0xd50000,
+                emissiveIntensity: 0.8
+            }),
+            trackMetal: new THREE.MeshStandardMaterial({
+                color: 0x333a45,
+                roughness: 0.7,
+                metalness: 0.5
+            }),
+            trackTread: new THREE.MeshStandardMaterial({
+                color: 0x1a1e24,
+                roughness: 0.9
+            }),
+            obsidian: new THREE.MeshStandardMaterial({
+                color: 0x141820,
+                roughness: 0.5
+            }),
+            headlight: new THREE.MeshStandardMaterial({
+                color: 0xffffff,
+                emissive: 0xdff9fb,
+                emissiveIntensity: 1.2
+            })
+        };
+
+        // --- VOXEL TANK BUILDER (Matches Reference Quad-Track Gold/Blue Tank) ---
+        function buildVoxelTank(isPlayer = true) {
+            const root = new THREE.Group();
+            const armorMat = isPlayer ? MATERIALS.playerArmor : MATERIALS.enemyArmor;
+            const glowMat = isPlayer ? MATERIALS.playerGlow : MATERIALS.enemyGlow;
+            const trimMat = isPlayer ? MATERIALS.playerGold : MATERIALS.trackMetal;
+
+            // Helper to add a voxel box quickly
+            function addVoxel(parent, w, h, d, x, y, z, mat) {
+                const geo = new THREE.BoxGeometry(w, h, d);
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.set(x, y, z);
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                parent.add(mesh);
+                return mesh;
+            }
+
+            // 1. QUAD TRACKS (Signature 4 front track pods like the reference image!)
+            const tracks = [];
+            const trackPositionsX = [-1.65, -0.75, 0.75, 1.65];
+            trackPositionsX.forEach((tx, idx) => {
+                const isOuter = idx === 0 || idx === 3;
+                const trackLen = isOuter ? 4.4 : 3.4;
+                const trackWidth = 0.58;
+                const trackHeight = 0.75;
+
+                // Track core housing
+                addVoxel(root, trackWidth, trackHeight, trackLen, tx, 0.45, isOuter ? 0 : 0.35, MATERIALS.trackMetal);
+
+                // Pixelated tread blocks along top & front
+                const treadGroup = new THREE.Group();
+                for (let z = -trackLen / 2; z <= trackLen / 2; z += 0.45) {
+                    addVoxel(treadGroup, trackWidth + 0.08, 0.14, 0.28, tx, 0.85, z + (isOuter ? 0 : 0.35), MATERIALS.trackTread);
+                    addVoxel(treadGroup, trackWidth + 0.08, 0.14, 0.28, tx, 0.08, z + (isOuter ? 0 : 0.35), MATERIALS.trackTread);
+                }
+                // Front & rear sprockets
+                addVoxel(treadGroup, trackWidth + 0.1, 0.55, 0.22, tx, 0.45, (trackLen / 2) + (isOuter ? 0.05 : 0.4), MATERIALS.trackTread);
+                addVoxel(treadGroup, trackWidth + 0.1, 0.55, 0.22, tx, 0.45, -(trackLen / 2) + (isOuter ? -0.05 : 0.3), MATERIALS.trackTread);
+
+                root.add(treadGroup);
+                tracks.push(treadGroup);
+            });
+
+            // Axle beams connecting the quad tracks
+            addVoxel(root, 3.6, 0.28, 0.35, 0, 0.45, 1.4, MATERIALS.obsidian);
+            addVoxel(root, 3.6, 0.28, 0.35, 0, 0.45, -1.2, MATERIALS.obsidian);
+
+            // 2. STEPPED VOXEL HULL (Pike-nose angled voxel front)
+            const hullGroup = new THREE.Group();
+            // Main lower chassis
+            addVoxel(hullGroup, 3.2, 0.55, 4.2, 0, 1.05, -0.1, armorMat);
+            // Wide sloped mudguards / side skirts
+            addVoxel(hullGroup, 4.1, 0.25, 4.5, 0, 1.25, 0.0, armorMat);
+            // Stepped voxel pike-nose front armor
+            addVoxel(hullGroup, 2.4, 0.35, 1.0, 0, 1.4, 1.85, trimMat);
+            addVoxel(hullGroup, 1.5, 0.25, 0.7, 0, 1.55, 2.1, glowMat); // Glowing front emblem core
+            addVoxel(hullGroup, 0.8, 0.22, 0.5, 0, 1.65, 2.15, MATERIALS.obsidian);
+
+            // Rear engine deck vents
+            addVoxel(hullGroup, 2.6, 0.3, 1.4, 0, 1.45, -1.5, MATERIALS.obsidian);
+            addVoxel(hullGroup, 2.2, 0.1, 1.0, 0, 1.62, -1.5, glowMat);
+
+            root.add(hullGroup);
+
+            // 3. ROTATING VOXEL TURRET & STRIPED BARREL
+            const turretPivot = new THREE.Group();
+            turretPivot.position.set(0, 1.65, -0.15);
+
+            // Stepped voxel dome turret
+            addVoxel(turretPivot, 2.3, 0.55, 2.5, 0, 0.28, 0, armorMat);
+            addVoxel(turretPivot, 1.8, 0.35, 1.9, 0, 0.68, -0.05, armorMat);
+            addVoxel(turretPivot, 1.2, 0.22, 1.2, 0, 0.92, -0.1, trimMat);
+
+            // Commander cupola & twin voxel antennas
+            addVoxel(turretPivot, 0.6, 0.25, 0.6, -0.45, 1.08, -0.25, MATERIALS.obsidian);
+            addVoxel(turretPivot, 0.07, 1.3, 0.07, -0.75, 1.45, -0.9, MATERIALS.obsidian);
+            addVoxel(turretPivot, 0.07, 1.3, 0.07, 0.75, 1.45, -0.9, MATERIALS.obsidian);
+
+            // Iconic Spotlight mounted next to mantlet
+            addVoxel(turretPivot, 0.42, 0.42, 0.38, -0.78, 0.42, 1.25, MATERIALS.obsidian);
+            addVoxel(turretPivot, 0.3, 0.3, 0.08, -0.78, 0.42, 1.45, MATERIALS.headlight);
+
+            // Gun Mantlet
+            addVoxel(turretPivot, 0.85, 0.52, 0.55, 0, 0.36, 1.32, trimMat);
+
+            // Segmented Voxel Barrel (Alternating Gold, Black, and Glowing Blue Rings)
+            const barrelGroup = new THREE.Group();
+            barrelGroup.position.set(0, 0.36, 1.55);
+
+            const segments = 9;
+            for (let i = 0; i < segments; i++) {
+                const segMat = i % 3 === 0 ? trimMat : (i % 3 === 1 ? MATERIALS.obsidian : glowMat);
+                const thick = i === segments - 1 ? 0.38 : (i === 0 ? 0.42 : 0.30);
+                addVoxel(barrelGroup, thick, thick, 0.36, 0, 0, i * 0.36 + 0.18, segMat);
+            }
+
+            // Muzzle tip point for spawning shells
+            const muzzlePoint = new THREE.Object3D();
+            muzzlePoint.position.set(0, 0, segments * 0.36 + 0.35);
+            barrelGroup.add(muzzlePoint);
+
+            turretPivot.add(barrelGroup);
+            root.add(turretPivot);
+
+            return {
+                mesh: root,
+                turret: turretPivot,
+                muzzle: muzzlePoint,
+                tracks: tracks
+            };
+        }
+
+        // --- VOXEL FOREST ENVIRONMENT BUILDER ---
+        function buildVoxelEnvironment() {
+            // 1. Voxel Earth & Grass Ground
+            const groundCanvas = document.createElement('canvas');
+            groundCanvas.width = 128;
+            groundCanvas.height = 128;
+            const ctx = groundCanvas.getContext('2d');
+
+            for (let y = 0; y < 128; y += 4) {
+                for (let x = 0; x < 128; x += 4) {
+                    // Dirt road down the center, mossy voxel grass on sides
+                    const distFromCenter = Math.abs(x - 64);
+                    if (distFromCenter < 16 + Math.sin(y * 0.15) * 6) {
+                        ctx.fillStyle = (x + y) % 8 === 0 ? '#4a3525' : '#3b281c';
+                    } else {
+                        const r = Math.random();
+                        ctx.fillStyle = r > 0.6 ? '#2d4c2b' : (r > 0.25 ? '#233d21' : '#3a2b1d');
+                    }
+                    ctx.fillRect(x, y, 4, 4);
+                }
+            }
+
+            const groundTex = new THREE.CanvasTexture(groundCanvas);
+            groundTex.wrapS = THREE.RepeatWrapping;
+            groundTex.wrapT = THREE.RepeatWrapping;
+            groundTex.repeat.set(14, 14);
+            groundTex.magFilter = THREE.NearestFilter;
+
+            const groundGeo = new THREE.BoxGeometry(CONFIG.arenaSize * 2.2, 2, CONFIG.arenaSize * 2.2);
+            const groundMat = new THREE.MeshStandardMaterial({ map: groundTex, roughness: 0.9 });
+            const ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.position.y = -1;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            // Invisible mathematical plane at barrel height for accurate mouse raycasting
+            groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -1.8);
+
+            // 2. Perimeter Voxel Cliff Walls
+            const wallMat = new THREE.MeshStandardMaterial({ color: 0x3b3530, roughness: 0.9 });
+            const grassTopMat = new THREE.MeshStandardMaterial({ color: 0x2e522b, roughness: 0.8 });
+            const bound = CONFIG.arenaSize;
+
+            for (let i = -bound; i <= bound; i += 6) {
+                const positions = [
+                    [i, 2.5, -bound],
+                    [i, 2.5, bound],
+                    [-bound, 2.5, i],
+                    [bound, 2.5, i]
+                ];
+                positions.forEach(([wx, wy, wz]) => {
+                    const h = 4 + ((Math.abs(wx + wz) % 3) * 1.5);
+                    const block = new THREE.Mesh(new THREE.BoxGeometry(6, h, 6), wallMat);
+                    block.position.set(wx, h / 2 - 0.5, wz);
+                    block.castShadow = true;
+                    block.receiveShadow = true;
+                    scene.add(block);
+
+                    const cap = new THREE.Mesh(new THREE.BoxGeometry(6.1, 0.5, 6.1), grassTopMat);
+                    cap.position.set(wx, h - 0.3, wz);
+                    scene.add(cap);
+                });
+            }
+
+            // 3. Scatter Destructible Voxel Trees & Boulders
+            spawnArenaObstacles();
+        }
+
+        function spawnArenaObstacles() {
+            // Clear existing obstacles
+            obstacles.forEach(obs => scene.remove(obs.mesh));
+            obstacles = [];
+
+            const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4e342e, roughness: 0.9 });
+            const leafMat1 = new THREE.MeshStandardMaterial({ color: 0x2e7d32, roughness: 0.8 });
+            const leafMat2 = new THREE.MeshStandardMaterial({ color: 0x388e3c, roughness: 0.8 });
+            const rockMat = new THREE.MeshStandardMaterial({ color: 0x546e7a, roughness: 0.85 });
+
+            for (let i = 0; i < 34; i++) {
+                const x = (Math.random() - 0.5) * (CONFIG.arenaSize * 1.65);
+                const z = (Math.random() - 0.5) * (CONFIG.arenaSize * 1.65);
+
+                // Keep player spawn area clear
+                if (Math.hypot(x, z) < 15) continue;
+
+                const isTree = Math.random() > 0.35;
+                const group = new THREE.Group();
+                group.position.set(x, 0, z);
+
+                if (isTree) {
+                    // Voxel Tree Trunk
+                    const trunk = new THREE.Mesh(new THREE.BoxGeometry(1.2, 4.5, 1.2), trunkMat);
+                    trunk.position.y = 2.25;
+                    trunk.castShadow = true;
+                    trunk.receiveShadow = true;
+                    group.add(trunk);
+
+                    // Stacked Voxel Foliage Cubes
+                    const leavesBottom = new THREE.Mesh(new THREE.BoxGeometry(4.2, 2.2, 4.2), leafMat1);
+                    leavesBottom.position.y = 4.8;
+                    leavesBottom.castShadow = true;
+                    group.add(leavesBottom);
+
+                    const leavesTop = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.8, 2.6), leafMat2);
+                    leavesTop.position.y = 6.5;
+                    leavesTop.castShadow = true;
+                    group.add(leavesTop);
+
+                    scene.add(group);
+                    obstacles.push({
+                        mesh: group,
+                        x: x,
+                        z: z,
+                        radius: 2.1,
+                        hp: 30,
+                        type: 'tree'
+                    });
+                } else {
+                    // Voxel Boulder Cluster
+                    const r1 = new THREE.Mesh(new THREE.BoxGeometry(2.8, 2.0, 2.6), rockMat);
+                    r1.position.y = 1.0;
+                    r1.castShadow = true;
+                    r1.receiveShadow = true;
+                    group.add(r1);
+
+                    const r2 = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.4, 1.8), rockMat);
+                    r2.position.set(0.8, 2.1, -0.4);
+                    r2.castShadow = true;
+                    group.add(r2);
+
+                    scene.add(group);
+                    obstacles.push({
+                        mesh: group,
+                        x: x,
+                        z: z,
+                        radius: 2.0,
+                        hp: 60,
+                        type: 'rock'
+                    });
+                }
+            }
+        }
+
+        // --- PARTICLE & VOXEL DEBRIS SYSTEM ---
+        function spawnVoxelExplosion(pos, colorHex, count = 18, scale = 0.45) {
+            const mat = new THREE.MeshStandardMaterial({
+                color: colorHex,
+                emissive: colorHex,
+                emissiveIntensity: 0.4,
+                roughness: 0.5
+            });
+            const geo = new THREE.BoxGeometry(scale, scale, scale);
+
+            for (let i = 0; i < count; i++) {
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.copy(pos);
+                mesh.position.x += (Math.random() - 0.5) * 1.2;
+                mesh.position.y += Math.random() * 1.2;
+                mesh.position.z += (Math.random() - 0.5) * 1.2;
+                scene.add(mesh);
+
+                particles.push({
+                    mesh: mesh,
+                    vel: new THREE.Vector3(
+                        (Math.random() - 0.5) * 18,
+                        Math.random() * 14 + 4,
+                        (Math.random() - 0.5) * 18
+                    ),
+                    rotVel: new THREE.Vector3(
+                        Math.random() * 10,
+                        Math.random() * 10,
+                        Math.random() * 10
+                    ),
+                    life: 0.6 + Math.random() * 0.45,
+                    maxLife: 1.0
+                });
+            }
+        }
+
+        // --- PROJECTILES ---
+        function fireShell(tankObj, isPlayer) {
+            const spawnPos = new THREE.Vector3();
+            tankObj.muzzle.getWorldPosition(spawnPos);
+
+            const dir = new THREE.Vector3(0, 0, 1);
+            dir.applyQuaternion(tankObj.turret.getWorldQuaternion(new THREE.Quaternion()));
+            dir.y = 0;
+            dir.normalize();
+
+            // Glowing voxel plasma shell
+            const shellGeo = new THREE.BoxGeometry(0.36, 0.36, 0.85);
+            const shellMat = new THREE.MeshStandardMaterial({
+                color: isPlayer ? 0x00e5ff : 0xff5252,
+                emissive: isPlayer ? 0x00b8d4 : 0xff1744,
+                emissiveIntensity: 1.5
+            });
+            const mesh = new THREE.Mesh(shellGeo, shellMat);
+            mesh.position.copy(spawnPos);
+            mesh.lookAt(spawnPos.clone().add(dir));
+            scene.add(mesh);
+
+            // Muzzle flash voxels
+            spawnVoxelExplosion(spawnPos, isPlayer ? 0x00e5ff : 0xff9100, 5, 0.25);
+
+            projectiles.push({
+                mesh: mesh,
+                vel: dir.multiplyScalar(isPlayer ? CONFIG.shellSpeed : CONFIG.shellSpeed * 0.68),
+                isPlayer: isPlayer,
+                life: 2.2
+            });
+
+            if (isPlayer) {
+                playSound('fire');
+                screenShake = 0.35;
+                // Recoil animation on turret
+                tankObj.turret.position.z = -0.45;
+            }
+        }
+
+        // --- ENEMY AI SPAWNING ---
+        function spawnWave(waveNum) {
+            const count = 2 + waveNum * 2;
+            showToast(`WAVE ${waveNum} — ${count} HOSTILES DETECTED`);
+
+            for (let i = 0; i < count; i++) {
+                const angle = (i / count) * Math.PI * 2 + Math.random() * 0.5;
+                const dist = CONFIG.arenaSize * 0.72;
+                const ex = Math.cos(angle) * dist;
+                const ez = Math.sin(angle) * dist;
+
+                const model = buildVoxelTank(false);
+                model.mesh.position.set(ex, 0, ez);
+                scene.add(model.mesh);
+
+                enemies.push({
+                    ...model,
+                    hp: 60 + (waveNum - 1) * 20,
+                    maxHp: 60 + (waveNum - 1) * 20,
+                    reloadTimer: 1.5 + Math.random() * 2.0,
+                    aiTimer: Math.random() * 2,
+                    strafeDir: Math.random() > 0.5 ? 1 : -1
+                });
+            }
+            updateHUD();
+        }
+
+        // --- POWER-UP PICKUPS ---
+        function spawnPickup(pos) {
+            const isRepair = Math.random() > 0.35;
+            const group = new THREE.Group();
+            group.position.set(pos.x, 0.9, pos.z);
+
+            const box = new THREE.Mesh(
+                new THREE.BoxGeometry(1.1, 1.1, 1.1),
+                new THREE.MeshStandardMaterial({
+                    color: isRepair ? 0x00e676 : 0xffd700,
+                    emissive: isRepair ? 0x00c853 : 0xffab00,
+                    emissiveIntensity: 0.6
+                })
+            );
+            group.add(box);
+            scene.add(group);
+
+            pickups.push({
+                mesh: group,
+                type: isRepair ? 'repair' : 'overdrive',
+                age: 0
+            });
+        }
+
+        // --- INITIALIZE SCENE & PLAYER ---
+        function initScene() {
+            const canvas = document.getElementById('game-canvas');
+            renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87a89e);
+            scene.fog = new THREE.FogExp2(0x87a89e, 0.0085);
+
+            camera = new THREE.PerspectiveCamera(48, window.innerWidth / window.innerHeight, 0.5, 300);
+            camera.position.set(0, 22, 26);
+
+            raycaster = new THREE.Raycaster();
+
+            // Atmospheric Golden-Hour Forest Lighting (Matches Reference Image Mood)
+            const ambientLight = new THREE.AmbientLight(0xdce7f2, 0.65);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xfff1d0, 1.25);
+            dirLight.position.set(45, 70, 35);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            const d = 85;
+            dirLight.shadow.camera.left = -d;
+            dirLight.shadow.camera.right = d;
+            dirLight.shadow.camera.top = d;
+            dirLight.shadow.camera.bottom = -d;
+            scene.add(dirLight);
+
+            // Cool cyan rim light to highlight the blue energy veins on the tank
+            const rimLight = new THREE.DirectionalLight(0x00e5ff, 0.45);
+            rimLight.position.set(-40, 25, -40);
+            scene.add(rimLight);
+
+            buildVoxelEnvironment();
+
+            // Build Player Tank
+            const model = buildVoxelTank(true);
+            playerTank = {
+                ...model,
+                hp: 100,
+                maxHp: 100,
+                reloadTimer: 0,
+                overdriveTimer: 0
+            };
+            scene.add(playerTank.mesh);
+        }
+
+        function resetGame() {
+            // Clean up dynamic objects
+            enemies.forEach(e => scene.remove(e.mesh));
+            enemies = [];
+            projectiles.forEach(p => scene.remove(p.mesh));
+            projectiles = [];
+            particles.forEach(pt => scene.remove(pt.mesh));
+            particles = [];
+            pickups.forEach(pk => scene.remove(pk.mesh));
+            pickups = [];
+
+            spawnArenaObstacles();
+
+            // Reset player
+            playerTank.mesh.position.set(0, 0, 0);
+            playerTank.mesh.rotation.set(0, 0, 0);
+            playerTank.turret.rotation.set(0, 0, 0);
+            playerTank.hp = 100;
+            playerTank.reloadTimer = 0;
+            playerTank.overdriveTimer = 0;
+
+            score = 0;
+            wave = 1;
+            cameraOrbitYaw = 0;
+            gameState = 'PLAYING';
+
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('gameover-screen').style.display = 'none';
+
+            spawnWave(wave);
+            updateHUD();
+        }
+
+        // --- COLLISION HELPERS ---
+        function checkObstacleCollision(x, z, radius) {
+            // Arena walls
+            const limit = CONFIG.arenaSize - 4.5;
+            if (Math.abs(x) > limit || Math.abs(z) > limit) return true;
+
+            // Trees & rocks
+            for (let i = 0; i < obstacles.length; i++) {
+                const obs = obstacles[i];
+                const dist = Math.hypot(x - obs.x, z - obs.z);
+                if (dist < radius + obs.radius) return true;
+            }
+            return false;
+        }
+
+        // --- MAIN UPDATE LOOP ---
+        function update(dt) {
+            // Smooth turret recoil recovery
+            if (playerTank && playerTank.turret.position.z < -0.15) {
+                playerTank.turret.position.z = Math.min(-0.15, playerTank.turret.position.z + dt * 1.8);
+            }
+
+            // Menu idle showcase rotation
+            if (gameState === 'MENU') {
+                const t = performance.now() * 0.0006;
+                camera.position.set(Math.sin(t) * 14, 8.5, Math.cos(t) * 14);
+                camera.lookAt(0, 1.5, 0);
+                return;
+            }
+
+            if (gameState !== 'PLAYING') return;
+
+            // 1. PLAYER MOVEMENT & STEERING
+            let moveInput = 0;
+            if (keys.w) moveInput += 1;
+            if (keys.s) moveInput -= 1;
+
+            let turnInput = 0;
+            if (keys.a) turnInput += 1;
+            if (keys.d) turnInput -= 1;
+
+            if (turnInput !== 0) {
+                // Reverse steering feels natural when backing up
+                const dirMultiplier = moveInput < 0 ? -1 : 1;
+                playerTank.mesh.rotation.y += turnInput * CONFIG.playerTurnSpeed * dirMultiplier * dt;
+            }
+
+            if (moveInput !== 0) {
+                const speedMult = playerTank.overdriveTimer > 0 ? 1.35 : 1.0;
+                const forward = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), playerTank.mesh.rotation.y);
+                const nextX = playerTank.mesh.position.x + forward.x * moveInput * CONFIG.playerSpeed * speedMult * dt;
+                const nextZ = playerTank.mesh.position.z + forward.z * moveInput * CONFIG.playerSpeed * speedMult * dt;
+
+                // Sliding collision resolution
+                if (!checkObstacleCollision(nextX, playerTank.mesh.position.z, 2.2)) {
+                    playerTank.mesh.position.x = nextX;
+                }
+                if (!checkObstacleCollision(playerTank.mesh.position.x, nextZ, 2.2)) {
+                    playerTank.mesh.position.z = nextZ;
+                }
+
+                // Subtle tread vibration
+                playerTank.tracks.forEach((tr, idx) => {
+                    tr.position.y = Math.sin(performance.now() * 0.03 + idx) * 0.03;
+                });
+            }
+
+            // 2. TURRET AIMING (Raycasting mouse onto arena plane)
+            raycaster.setFromCamera(mouse, camera);
+            const target = new THREE.Vector3();
+            if (raycaster.ray.intersectPlane(groundPlane, target)) {
+                aimPoint.copy(target);
+            }
+
+            const dx = aimPoint.x - playerTank.mesh.position.x;
+            const dz = aimPoint.z - playerTank.mesh.position.z;
+            const worldTargetYaw = Math.atan2(dx, dz);
+            const localTargetYaw = worldTargetYaw - playerTank.mesh.rotation.y;
+
+            // Shortest angular interpolation
+            let diff = localTargetYaw - playerTank.turret.rotation.y;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            playerTank.turret.rotation.y += diff * Math.min(1, dt * 12);
+
+            // 3. RELOAD & FIRING
+            if (playerTank.reloadTimer > 0) {
+                playerTank.reloadTimer = Math.max(0, playerTank.reloadTimer - dt);
+            }
+            if (playerTank.overdriveTimer > 0) {
+                playerTank.overdriveTimer = Math.max(0, playerTank.overdriveTimer - dt);
+            }
+
+            if (keys.space && playerTank.reloadTimer <= 0) {
+                fireShell(playerTank, true);
+                playerTank.reloadTimer = playerTank.overdriveTimer > 0 ? CONFIG.reloadTime * 0.5 : CONFIG.reloadTime;
+            }
+
+            // 4. ENEMY TANK AI
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const enemy = enemies[i];
+                const toPlayer = new THREE.Vector3().subVectors(playerTank.mesh.position, enemy.mesh.position);
+                const distToPlayer = toPlayer.length();
+                const angleToPlayer = Math.atan2(toPlayer.x, toPlayer.z);
+
+                // Turret smoothly tracks player
+                let tDiff = (angleToPlayer - enemy.mesh.rotation.y) - enemy.turret.rotation.y;
+                while (tDiff > Math.PI) tDiff -= Math.PI * 2;
+                while (tDiff < -Math.PI) tDiff += Math.PI * 2;
+                enemy.turret.rotation.y += tDiff * Math.min(1, dt * 4.5);
+
+                // AI movement: advance if far, flank/strafe if in firing range
+                enemy.aiTimer -= dt;
+                if (enemy.aiTimer <= 0) {
+                    enemy.strafeDir *= -1;
+                    enemy.aiTimer = 2.0 + Math.random() * 2.5;
+                }
+
+                let desiredHullAngle = angleToPlayer;
+                if (distToPlayer < 22) {
+                    desiredHullAngle += (Math.PI / 2.2) * enemy.strafeDir;
+                }
+
+                let hDiff = desiredHullAngle - enemy.mesh.rotation.y;
+                while (hDiff > Math.PI) hDiff -= Math.PI * 2;
+                while (hDiff < -Math.PI) hDiff += Math.PI * 2;
+                enemy.mesh.rotation.y += Math.sign(hDiff) * Math.min(Math.abs(hDiff), 1.8 * dt);
+
+                const eFwd = new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), enemy.mesh.rotation.y);
+                const eNextX = enemy.mesh.position.x + eFwd.x * CONFIG.enemySpeed * dt;
+                const eNextZ = enemy.mesh.position.z + eFwd.z * CONFIG.enemySpeed * dt;
+
+                if (!checkObstacleCollision(eNextX, enemy.mesh.position.z, 2.2)) {
+                    enemy.mesh.position.x = eNextX;
+                } else {
+                    enemy.strafeDir *= -1;
+                }
+                if (!checkObstacleCollision(enemy.mesh.position.x, eNextZ, 2.2)) {
+                    enemy.mesh.position.z = eNextZ;
+                }
+
+                // Enemy Firing
+                enemy.reloadTimer -= dt;
+                if (enemy.reloadTimer <= 0 && distToPlayer < 52 && Math.abs(tDiff) < 0.25) {
+                    fireShell(enemy, false);
+                    enemy.reloadTimer = 2.1 + Math.random() * 1.2;
+                }
+            }
+
+            // 5. PROJECTILES & DESTRUCTIBLE VOXELS
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                const p = projectiles[i];
+                p.mesh.position.addScaledVector(p.vel, dt);
+                p.life -= dt;
+
+                let hit = false;
+
+                // Arena bounds check
+                if (Math.abs(p.mesh.position.x) > CONFIG.arenaSize - 3 || Math.abs(p.mesh.position.z) > CONFIG.arenaSize - 3) {
+                    hit = true;
+                    spawnVoxelExplosion(p.mesh.position, 0x94a3b8, 6, 0.3);
+                }
+
+                // Obstacle collision (shatters voxel trees & rocks!)
+                if (!hit) {
+                    for (let j = obstacles.length - 1; j >= 0; j--) {
+                        const obs = obstacles[j];
+                        if (Math.hypot(p.mesh.position.x - obs.x, p.mesh.position.z - obs.z) < obs.radius + 0.4) {
+                            hit = true;
+                            obs.hp -= 35;
+                            playSound('hit');
+                            spawnVoxelExplosion(p.mesh.position, obs.type === 'tree' ? 0x4caf50 : 0x78909c, 8, 0.35);
+
+                            if (obs.hp <= 0) {
+                                spawnVoxelExplosion(new THREE.Vector3(obs.x, 2, obs.z), obs.type === 'tree' ? 0x2e7d32 : 0x546e7a, 20, 0.55);
+                                scene.remove(obs.mesh);
+                                obstacles.splice(j, 1);
+                            }
+                            break;
+                        }
+                    }
+                }
+
+                // Tank hit detection
+                if (!hit) {
+                    if (p.isPlayer) {
+                        for (let j = enemies.length - 1; j >= 0; j--) {
+                            const enemy = enemies[j];
+                            if (Math.hypot(p.mesh.position.x - enemy.mesh.position.x, p.mesh.position.z - enemy.mesh.position.z) < 2.4) {
+                                hit = true;
+                                enemy.hp -= 35;
+                                playSound('hit');
+                                spawnVoxelExplosion(p.mesh.position, 0xffab00, 10, 0.35);
+
+                                if (enemy.hp <= 0) {
+                                    playSound('explosion');
+                                    screenShake = 0.6;
+                                    spawnVoxelExplosion(enemy.mesh.position, 0xff5252, 28, 0.55);
+                                    spawnVoxelExplosion(enemy.mesh.position, 0xffd700, 14, 0.45);
+                                    if (Math.random() < 0.45) spawnPickup(enemy.mesh.position);
+                                    scene.remove(enemy.mesh);
+                                    enemies.splice(j, 1);
+                                    score += 150 * wave;
+                                }
+                                break;
+                            }
+                        }
+                    } else {
+                        // Enemy shot hitting player
+                        if (Math.hypot(p.mesh.position.x - playerTank.mesh.position.x, p.mesh.position.z - playerTank.mesh.position.z) < 2.3) {
+                            hit = true;
+                            playerTank.hp = Math.max(0, playerTank.hp - 15);
+                            playSound('hit');
+                            screenShake = 0.55;
+                            spawnVoxelExplosion(p.mesh.position, 0x00e5ff, 12, 0.35);
+
+                            if (playerTank.hp <= 0) {
+                                playSound('explosion');
+                                spawnVoxelExplosion(playerTank.mesh.position, 0xffd700, 35, 0.6);
+                                gameState = 'GAMEOVER';
+                                document.getElementById('final-score').textContent = String(score).padStart(4, '0');
+                                document.getElementById('gameover-screen').style.display = 'flex';
+                            }
+                        }
+                    }
+                }
+
+                if (hit || p.life <= 0) {
+                    scene.remove(p.mesh);
+                    projectiles.splice(i, 1);
+                }
+            }
+
+            // 6. PICKUPS COLLECTION
+            for (let i = pickups.length - 1; i >= 0; i--) {
+                const pk = pickups[i];
+                pk.age += dt;
+                pk.mesh.rotation.y += dt * 2.5;
+                pk.mesh.position.y = 0.9 + Math.sin(pk.age * 4) * 0.25;
+
+                if (Math.hypot(pk.mesh.position.x - playerTank.mesh.position.x, pk.mesh.position.z - playerTank.mesh.position.z) < 2.8) {
+                    playSound('pickup');
+                    if (pk.type === 'repair') {
+                        playerTank.hp = Math.min(playerTank.maxHp, playerTank.hp + 35);
+                        showToast('ARMOR REPAIRED (+35)');
+                    } else {
+                        playerTank.overdriveTimer = 7.0;
+                        showToast('PLASMA OVERDRIVE (7s)');
+                    }
+                    score += 50;
+                    scene.remove(pk.mesh);
+                    pickups.splice(i, 1);
+                }
+            }
+
+            // 7. PARTICLES PHYSICS
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const pt = particles[i];
+                pt.vel.y -= 28 * dt; // Voxel gravity
+                pt.mesh.position.addScaledVector(pt.vel, dt);
+                pt.mesh.rotation.x += pt.rotVel.x * dt;
+                pt.mesh.rotation.y += pt.rotVel.y * dt;
+
+                if (pt.mesh.position.y < 0.2) {
+                    pt.mesh.position.y = 0.2;
+                    pt.vel.y *= -0.4;
+                    pt.vel.x *= 0.7;
+                    pt.vel.z *= 0.7;
+                }
+
+                pt.life -= dt;
+                const scale = Math.max(0.01, pt.life / pt.maxLife);
+                pt.mesh.scale.set(scale, scale, scale);
+
+                if (pt.life <= 0) {
+                    scene.remove(pt.mesh);
+                    particles.splice(i, 1);
+                }
+            }
+
+            // 8. CHECK WAVE COMPLETION
+            if (enemies.length === 0 && gameState === 'PLAYING') {
+                wave++;
+                playerTank.hp = Math.min(playerTank.maxHp, playerTank.hp + 20);
+                spawnWave(wave);
+            }
+
+            // 9. CAMERA TRACKING & SCREEN SHAKE
+            updateCamera(dt);
+            updateHUD();
+        }
+
+        function updateCamera(dt) {
+            const pPos = playerTank.mesh.position;
+            let offset = new THREE.Vector3();
+
+            if (cameraMode === 0) {
+                // Dynamic Isometric Follow
+                offset.set(Math.sin(cameraOrbitYaw) * 24, 21, Math.cos(cameraOrbitYaw) * 24);
+            } else if (cameraMode === 1) {
+                // High Tactical Overhead
+                offset.set(Math.sin(cameraOrbitYaw) * 12, 36, Math.cos(cameraOrbitYaw) * 12);
+            } else {
+                // Close Action Behind Tank
+                const angle = playerTank.mesh.rotation.y + Math.PI + cameraOrbitYaw;
+                offset.set(Math.sin(angle) * 15, 10, Math.cos(angle) * 15);
+            }
+
+            const desiredCamPos = pPos.clone().add(offset);
+            camera.position.lerp(desiredCamPos, Math.min(1, dt * 6));
+
+            if (screenShake > 0) {
+                camera.position.x += (Math.random() - 0.5) * screenShake;
+                camera.position.y += (Math.random() - 0.5) * screenShake;
+                screenShake = Math.max(0, screenShake - dt * 2.5);
+            }
+
+            camera.lookAt(pPos.x, 1.5, pPos.z);
+        }
+
+        // --- HUD & UI UPDATES ---
+        function updateHUD() {
+            if (!playerTank) return;
+            const hpPct = (playerTank.hp / playerTank.maxHp) * 100;
+            const hpBar = document.getElementById('hp-bar');
+            hpBar.style.width = `${hpPct}%`;
+            hpBar.style.background = hpPct < 30
+                ? 'linear-gradient(90deg, #ff1744, #ff5252)'
+                : 'linear-gradient(90deg, #00d2ff, #38ef7d)';
+
+            const reloadPct = (1 - (playerTank.reloadTimer / CONFIG.reloadTime)) * 100;
+            document.getElementById('reload-bar').style.width = `${Math.min(100, Math.max(0, reloadPct))}%`;
+
+            document.getElementById('wave-display').textContent = wave;
+            document.getElementById('enemies-left').textContent = enemies.length;
+            document.getElementById('score-display').textContent = String(score).padStart(4, '0');
+        }
+
+        let toastTimeout;
+        function showToast(msg) {
+            const el = document.getElementById('toast-banner');
+            el.textContent = msg;
+            el.style.opacity = '1';
+            clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => {
+                el.style.opacity = '0';
+            }, 2400);
+        }
+
+        // --- EVENT LISTENERS ---
+        function setupEvents() {
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+
+            // Keyboard
+            window.addEventListener('keydown', (e) => {
+                const k = e.key.toLowerCase();
+                if (k === 'w' || e.key === 'ArrowUp') keys.w = true;
+                if (k === 's' || e.key === 'ArrowDown') keys.s = true;
+                if (k === 'a' || e.key === 'ArrowLeft') keys.a = true;
+                if (k === 'd' || e.key === 'ArrowRight') keys.d = true;
+                if (e.code === 'Space') {
+                    keys.space = true;
+                    if (gameState === 'PLAYING') e.preventDefault();
+                }
+            });
+
+            window.addEventListener('keyup', (e) => {
+                const k = e.key.toLowerCase();
+                if (k === 'w' || e.key === 'ArrowUp') keys.w = false;
+                if (k === 's' || e.key === 'ArrowDown') keys.s = false;
+                if (k === 'a' || e.key === 'ArrowLeft') keys.a = false;
+                if (k === 'd' || e.key === 'ArrowRight') keys.d = false;
+                if (e.code === 'Space') keys.space = false;
+            });
+
+            // Mouse Aiming, Firing & Right-Click Camera Orbit
+            const canvas = document.getElementById('game-canvas');
+            canvas.addEventListener('mousemove', (e) => {
+                mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+                mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+                if (isRightDragging) {
+                    cameraOrbitYaw -= (e.clientX - prevMouseX) * 0.008;
+                }
+                prevMouseX = e.clientX;
+            });
+
+            canvas.addEventListener('mousedown', (e) => {
+                if (e.button === 0 && gameState === 'PLAYING') {
+                    initAudio();
+                    keys.space = true;
+                } else if (e.button === 2) {
+                    isRightDragging = true;
+                    prevMouseX = e.clientX;
+                }
+            });
+
+            window.addEventListener('mouseup', (e) => {
+                if (e.button === 0) keys.space = false;
+                if (e.button === 2) isRightDragging = false;
+            });
+
+            canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+            // Touch aiming on canvas
+            canvas.addEventListener('touchstart', (e) => {
+                if (e.touches.length > 0) {
+                    const t = e.touches[0];
+                    mouse.x = (t.clientX / window.innerWidth) * 2 - 1;
+                    mouse.y = -(t.clientY / window.innerHeight) * 2 + 1;
+                }
+            }, { passive: true });
+
+            canvas.addEventListener('touchmove', (e) => {
+                if (e.touches.length > 0) {
+                    const t = e.touches[0];
+                    mouse.x = (t.clientX / window.innerWidth) * 2 - 1;
+                    mouse.y = -(t.clientY / window.innerHeight) * 2 + 1;
+                }
+            }, { passive: true });
+
+            // Mobile D-Pad & Fire Button
+            const bindTouch = (id, keyName) => {
+                const btn = document.getElementById(id);
+                btn.addEventListener('touchstart', (e) => { e.preventDefault(); initAudio(); keys[keyName] = true; });
+                btn.addEventListener('touchend', (e) => { e.preventDefault(); keys[keyName] = false; });
+            };
+            bindTouch('btn-up', 'w');
+            bindTouch('btn-down', 's');
+            bindTouch('btn-left', 'a');
+            bindTouch('btn-right', 'd');
+            bindTouch('touch-fire', 'space');
+
+            // UI Action Buttons
+            document.getElementById('start-btn').addEventListener('click', () => {
+                initAudio();
+                resetGame();
+            });
+
+            document.getElementById('retry-btn').addEventListener('click', () => {
+                initAudio();
+                resetGame();
+            });
+
+            document.getElementById('btn-restart').addEventListener('click', () => {
+                initAudio();
+                resetGame();
+            });
+
+            document.getElementById('btn-camera').addEventListener('click', () => {
+                cameraMode = (cameraMode + 1) % 3;
+                const labels = ['Follow', 'Overhead', 'Action'];
+                document.getElementById('btn-camera').textContent = `🎥 Camera: ${labels[cameraMode]}`;
+            });
+
+            document.getElementById('btn-sound').addEventListener('click', () => {
+                soundEnabled = !soundEnabled;
+                if (soundEnabled) initAudio();
+                document.getElementById('btn-sound').textContent = soundEnabled ? '🔊 Sound: ON' : '🔇 Sound: OFF';
+            });
+        }
+
+        // --- ANIMATION LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+            const dt = Math.min(clock.getDelta(), 0.05);
+            update(dt);
+            renderer.render(scene, camera);
+        }
+
+        window.onload = function () {
+            initScene();
+            setupEvents();
+            animate();
+        };
+    </script>
+</body>
+</html>
